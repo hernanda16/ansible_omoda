@@ -130,7 +130,6 @@
       pip:
         name: httpserver
         executable: pip3
-        extra_args: --break-system-packages
 
     - name: Install Python packages
       pip:
@@ -140,7 +139,6 @@
           - loguru
           - cantools
         executable: pip3
-        extra_args: --break-system-packages
       become: false
 
     # 🧠 Source ROS
