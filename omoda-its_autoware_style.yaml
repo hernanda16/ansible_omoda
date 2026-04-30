@@ -159,7 +159,6 @@
       git:
         repo: https://github.com/lwfinger/rtl8852au.git
         dest: /usr/src/rtl8852au
-        version: master
 
     # 🔨 Build driver (idempotent)
     - name: Build driver
