@@ -357,7 +357,6 @@
       apt:
         name:
           - "ros-{{ ros_distro }}-rmw-cyclonedds-cpp"
-          - cyclone-dds-tools
         state: present
         update_cache: yes
 
