@@ -227,23 +227,37 @@
   # -----------------------------------------------------------------------------
   # 10. DESKTOP / GPU / CONTAINER
   # -----------------------------------------------------------------------------
-    - name: Download NoMachine deb
+    - name: Check installed NoMachine version
+      shell: |
+        dpkg-query -W -f='${Version}' nomachine 2>/dev/null || echo "not_installed"
+      register: nomachine_version
+      changed_when: false
+
+    - name: Set target NoMachine version
+      set_fact:
+        nomachine_target_version: "9.4.14"
+
+    - name: Notify NoMachine version mismatch
+      debug:
+        msg: "Installed NoMachine version differs ({{ nomachine_version.stdout }}) from target ({{ nomachine_target_version }})"
+      when:
+        - nomachine_version.stdout != "not_installed"
+        - nomachine_target_version not in nomachine_version.stdout
+
+    - name: Download NoMachine deb only if missing or version mismatch
       get_url:
         url: https://web9001.nomachine.com/download/9.4/Linux/nomachine_9.4.14_1_amd64.deb
         dest: /tmp/nomachine_9.4.14_1_amd64.deb
         mode: "0644"
-
-    - name: Check if NoMachine is installed
-      command: dpkg-query -W -f='${Status}' nomachine
-      register: nomachine_status
-      changed_when: false
-      failed_when: false
+      when:
+        - nomachine_version.stdout == "not_installed" or nomachine_target_version not in nomachine_version.stdout
 
     - name: Install NoMachine deb
       apt:
         deb: /tmp/nomachine_9.4.14_1_amd64.deb
-      when: "'install ok installed' not in nomachine_status.stdout"
-
+      when:
+        - nomachine_version.stdout == "not_installed" or nomachine_target_version not in nomachine_version.stdout
+    
     - name: Install NVIDIA driver and Mesa utils
       apt:
         name:
@@ -600,3 +614,58 @@
         name: can-check.service
         enabled: yes
         daemon_reload: yes
+
+    # 📊 KDiskMark
+    - name: Check if KDiskMark is installed
+      command: dpkg-query -W -f='${Status}' kdiskmark
+      register: kdiskmark_status
+      changed_when: false
+      failed_when: false
+
+    - name: Add KDiskMark PPA
+      apt_repository:
+        repo: ppa:jonmagon/kdiskmark
+        state: present
+      when: "'install ok installed' not in kdiskmark_status.stdout"
+
+    - name: Update apt cache after KDiskMark PPA
+      apt:
+        update_cache: yes
+      when: "'install ok installed' not in kdiskmark_status.stdout"
+
+    - name: Install KDiskMark
+      apt:
+        name: kdiskmark
+        state: present
+      when: "'install ok installed' not in kdiskmark_status.stdout"
+
+    # 🔥 FurMark Linux (.7z)
+    - name: Ensure extraction tools are installed
+      apt:
+        name:
+          - p7zip-full
+        state: present
+        update_cache: yes
+
+    - name: Check if FurMark archive exists
+      stat:
+        path: "/home/{{ ansible_user_id }}/tools/furmark_linux.7z"
+      register: furmark_archive
+
+    - name: Download FurMark archive
+      get_url:
+        url: https://geeks3d.com/dl/get/834
+        dest: "/home/{{ ansible_user_id }}/tools/furmark_linux.7z"
+        mode: "0644"
+      when: not furmark_archive.stat.exists
+
+    - name: Check if FurMark extracted directory exists
+      stat:
+        path: "/home/{{ ansible_user_id }}/tools/furmark"
+      register: furmark_extract_dir
+
+    - name: Extract FurMark archive
+      command: >
+        7z x /home/{{ ansible_user_id }}/tools/furmark_linux.7z
+        -o/home/{{ ansible_user_id }}/tools/furmark
+      when: not furmark_extract_dir.stat.exists
