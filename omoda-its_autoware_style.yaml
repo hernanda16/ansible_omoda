@@ -79,9 +79,16 @@
         url: https://github.com/ros-infrastructure/ros-apt-source/releases/download/1.1.0/ros2-apt-source_1.1.0.{{ ansible_distribution_release }}_all.deb
         dest: /tmp/ros2-apt-source.deb
 
+    - name: Check if ROS2 apt source is installed
+      command: dpkg-query -W -f='${Status}' ros2-apt-source
+      register: ros2_apt_source_status
+      changed_when: false
+      failed_when: false
+
     - name: Install ROS2 apt source
       apt:
         deb: /tmp/ros2-apt-source.deb
+      when: "'install ok installed' not in ros2_apt_source_status.stdout"
 
     # 🔄 Update system
   # -----------------------------------------------------------------------------
@@ -229,9 +236,16 @@
         dest: /tmp/nomachine_9.4.14_1_amd64.deb
         mode: "0644"
 
+    - name: Check if NoMachine is installed
+      command: dpkg-query -W -f='${Status}' nomachine
+      register: nomachine_status
+      changed_when: false
+      failed_when: false
+
     - name: Install NoMachine deb
       apt:
         deb: /tmp/nomachine_9.4.14_1_amd64.deb
+      when: "'install ok installed' not in nomachine_status.stdout"
 
     - name: Install NVIDIA driver and Mesa utils
       apt:
