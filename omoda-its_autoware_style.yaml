@@ -455,7 +455,6 @@
       git:
         repo: https://github.com/MuHafidzh/cabana.git
         dest: "/home/{{ ansible_user_id }}/tools/cabana"
-        version: master
 
     - name: Add cabana alias to bashrc
       lineinfile:
