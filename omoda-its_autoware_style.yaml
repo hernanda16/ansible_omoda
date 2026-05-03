@@ -7,665 +7,803 @@
 
   tasks:
 
-    # 🔧 Base dependencies
-  # -----------------------------------------------------------------------------
-  # AUTOWARE-STYLE STRUCTURE
-  # OMODA-ITS remote provisioning
-  # -----------------------------------------------------------------------------
-  # 01. BASE SYSTEM PREPARATION
-  # -----------------------------------------------------------------------------
-    - name: Install base dependencies
-      apt:
-        name:
-          - make
-          - gcc
-          - gcc-12
-          - wireless-tools
-          - can-utils
-          - curl
-          - locales
-          - software-properties-common
-          - python3-pip
-          - libyaml-cpp-dev
-          - git
-          - dkms
-          - build-essential
-          - libpcap-dev
-          - libleptonica-dev
-          - libtesseract-dev
-          - libcapnp-dev
-          - htop
-          - tmux
-          - chrony
-          - nvtop
-        state: present
-        update_cache: yes
+    # -----------------------------------------------------------------------------
+    # OMODA-ITS REMOTE PROVISIONING
+    # -----------------------------------------------------------------------------
+    # 01. BASE SYSTEM PREPARATION
+    # -----------------------------------------------------------------------------
+    - name: 01 | Base system preparation
+      block:
+        - name: Debug active user
+          debug:
+            msg:
+              - "ansible_user_id = {{ ansible_user_id }}"
+              - "home = /home/{{ ansible_user_id }}"
+        - name: Install base dependencies
+          apt:
+            name:
+              - make
+              - gcc
+              - gcc-12
+              - wireless-tools
+              - can-utils
+              - curl
+              - locales
+              - software-properties-common
+              - python3-pip
+              - libyaml-cpp-dev
+              - git
+              - dkms
+              - build-essential
+              - libpcap-dev
+              - libleptonica-dev
+              - libtesseract-dev
+              - libcapnp-dev
+              - htop
+              - tmux
+              - chrony
+              - nvtop
+              - libasio-dev
+              - terminator
+              - net-tools
+            state: present
+            update_cache: yes
 
-    - name: Install kernel headers1
-      apt:  
-        name: linux-headers-{{ ansible_kernel }}
-        state: present
+        - name: Install kernel headers1
+          apt:  
+            name: linux-headers-{{ ansible_kernel }}
+            state: present
 
-    # 🌍 Locale
-  # -----------------------------------------------------------------------------
-  # 02. LOCALE
-  # -----------------------------------------------------------------------------
-    - name: Generate locale
-      locale_gen:
-        name: en_US.UTF-8
-        state: present
+    # -----------------------------------------------------------------------------
+    # 02. LOCALE
+    # -----------------------------------------------------------------------------
+    - name: 02 | Locale
+      block:
+        - name: Generate locale
+          locale_gen:
+            name: en_US.UTF-8
+            state: present
 
-    - name: Set locale
-      lineinfile:
-        path: /etc/default/locale
-        line: "{{ item }}"
-        create: yes
-      loop:
-        - LANG=en_US.UTF-8
-        - LC_ALL=en_US.UTF-8
+        - name: Set locale
+          lineinfile:
+            path: /etc/default/locale
+            line: "{{ item }}"
+            create: yes
+          loop:
+            - LANG=en_US.UTF-8
+            - LC_ALL=en_US.UTF-8
 
-    # 📦 Universe repo
-  # -----------------------------------------------------------------------------
-  # 03. REPOSITORIES
-  # -----------------------------------------------------------------------------
-    - name: Enable universe repository
-      apt_repository:
-        repo: "deb http://archive.ubuntu.com/ubuntu {{ ansible_distribution_release }} universe"
-        state: present
+    # -----------------------------------------------------------------------------
+    # 03. REPOSITORIES
+    # -----------------------------------------------------------------------------
+    - name: 03 | Repositories
+      block:
+        - name: Enable universe repository
+          apt_repository:
+            repo: "deb http://archive.ubuntu.com/ubuntu {{ ansible_distribution_release }} universe"
+            state: present
 
-    # 📥 ROS repo
-    - name: Download ROS2 apt source
-      get_url:
-        url: https://github.com/ros-infrastructure/ros-apt-source/releases/download/1.1.0/ros2-apt-source_1.1.0.{{ ansible_distribution_release }}_all.deb
-        dest: /tmp/ros2-apt-source.deb
+        - name: Stat ROS2 apt source deb
+          stat:
+            path: /tmp/ros2-apt-source.deb
+          register: ros2_apt_source_deb
 
-    - name: Check if ROS2 apt source is installed
-      command: dpkg-query -W -f='${Status}' ros2-apt-source
-      register: ros2_apt_source_status
-      changed_when: false
-      failed_when: false
+        - name: Download ROS2 apt source
+          get_url:
+            url: https://github.com/ros-infrastructure/ros-apt-source/releases/download/1.1.0/ros2-apt-source_1.1.0.{{ ansible_distribution_release }}_all.deb
+            dest: /tmp/ros2-apt-source.deb
+          when: not ros2_apt_source_deb.stat.exists
 
-    - name: Install ROS2 apt source
-      apt:
-        deb: /tmp/ros2-apt-source.deb
-      when: "'install ok installed' not in ros2_apt_source_status.stdout"
+        - name: Check if ROS2 apt source is installed
+          command: dpkg-query -W -f='${Status}' ros2-apt-source
+          register: ros2_apt_source_status
+          changed_when: false
+          failed_when: false
 
-    # 🔄 Update system
-  # -----------------------------------------------------------------------------
-  # 04. SYSTEM UPDATE
-  # -----------------------------------------------------------------------------
-    - name: Update and upgrade
-      apt:
-        update_cache: yes
-        upgrade: dist
+        - name: Install ROS2 apt source
+          apt:
+            deb: /tmp/ros2-apt-source.deb
+          when: "'install ok installed' not in ros2_apt_source_status.stdout"
 
-    # 🤖 ROS packages
-  # -----------------------------------------------------------------------------
-  # 05. ROS STACK
-  # -----------------------------------------------------------------------------
-    - name: Install ROS packages
-      apt:
-        name:
-          - "ros-{{ ros_distro }}-ros-base"
-          - ros-dev-tools
-          - "ros-{{ ros_distro }}-pcl-conversions"
-          - "ros-{{ ros_distro }}-rosbridge-server"
-          - "ros-{{ ros_distro }}-rosbridge-suite"
-          - "ros-{{ ros_distro }}-web-video-server"
-          - "ros-{{ ros_distro }}-joy"
-          - "ros-{{ ros_distro }}-pcl-ros"
-          - "ros-{{ ros_distro }}-diagnostic-updater"
-          - "ros-{{ ros_distro }}-robot-localization"
-          - "ros-{{ ros_distro }}-rviz2"
-          - "ros-{{ ros_distro }}-cv-bridge"
-          - "ros-{{ ros_distro }}-image-geometry"
-          - "ros-{{ ros_distro }}-plotjuggler-ros"
-        state: present
+    # -----------------------------------------------------------------------------
+    # 04. SYSTEM UPDATE
+    # -----------------------------------------------------------------------------
+    - name: 04 | System update
+      block:
+        - name: Update and upgrade
+          apt:
+            update_cache: yes
+            upgrade: dist
 
-    # 🐍 Pip (FIX penting di Ubuntu modern)
-  # -----------------------------------------------------------------------------
-  # 06. PYTHON PACKAGES
-  # -----------------------------------------------------------------------------
-    - name: Install Python package httpserver
-      pip:
-        name: httpserver
-        executable: pip3
+    # -----------------------------------------------------------------------------
+    # 05. ROS STACK
+    # -----------------------------------------------------------------------------
+    - name: 05 | ROS stack
+      block:
+        - name: Install ROS packages
+          apt:
+            name:
+              - "ros-{{ ros_distro }}-ros-base"
+              - ros-dev-tools
+              - "ros-{{ ros_distro }}-pcl-conversions"
+              - "ros-{{ ros_distro }}-rosbridge-server"
+              - "ros-{{ ros_distro }}-rosbridge-suite"
+              - "ros-{{ ros_distro }}-web-video-server"
+              - "ros-{{ ros_distro }}-joy"
+              - "ros-{{ ros_distro }}-pcl-ros"
+              - "ros-{{ ros_distro }}-diagnostic-updater"
+              - "ros-{{ ros_distro }}-robot-localization"
+              - "ros-{{ ros_distro }}-rviz2"
+              - "ros-{{ ros_distro }}-cv-bridge"
+              - "ros-{{ ros_distro }}-image-geometry"
+              - "ros-{{ ros_distro }}-plotjuggler-ros"
+              - "ros-{{ ros_distro }}-camera-info-manager"
+              - "ros-{{ ros_distro }}-nav2-navfn-planner"
+              - "ros-{{ ros_distro }}-nav2-lifecycle-manager"
+              - "ros-{{ ros_distro }}-nav2-waypoint-follower"
+              - "ros-{{ ros_distro }}-nav2-costmap-2d"
+              - "ros-{{ ros_distro }}-nav2-msgs"
+              - "ros-{{ ros_distro }}-rtabmap-slam"
+              - "ros-{{ ros_distro }}-sophus"
+              - "ros-{{ ros_distro }}-v4l2-camera"
+              - "ros-{{ ros_distro }}-image-proc"
+              - "ros-{{ ros_distro }}-xacro"
+            state: present
 
-    - name: Install Python packages
-      pip:
-        name:
-          - httpserver
-          - flask
-          - loguru
-          - cantools
-        executable: pip3
-      become: false
+    # -----------------------------------------------------------------------------
+    # 06. PYTHON PACKAGES
+    # -----------------------------------------------------------------------------
+    - name: 06 | Python packages
+      block:
+        - name: Install Python package httpserver
+          pip:
+            name: httpserver
+            executable: pip3
 
-    # 🧠 Source ROS
-  # -----------------------------------------------------------------------------
-  # 07. SHELL INTEGRATION
-  # -----------------------------------------------------------------------------
-    - name: Add ROS to bashrc
-      lineinfile:
-        path: /home/{{ ansible_user_id }}/.bashrc
-        line: "source /opt/ros/{{ ros_distro }}/setup.bash"
-        create: yes
+        - name: Install Python packages
+          pip:
+            name:
+              - httpserver
+              - flask
+              - loguru
+              - cantools
+            executable: pip3
+          become: false
 
-    # 📡 Clone driver
-  # -----------------------------------------------------------------------------
-  # 08. HARDWARE DRIVER
-  # -----------------------------------------------------------------------------
-    - name: Clone rtl8852au repo
-      git:
-        repo: https://github.com/lwfinger/rtl8852au.git
-        dest: /usr/src/rtl8852au
+    # -----------------------------------------------------------------------------
+    # 07. SHELL INTEGRATION
+    # -----------------------------------------------------------------------------
+    - name: 07 | Shell integration
+      block:
+        - name: Add ROS to bashrc
+          lineinfile:
+            path: /home/{{ ansible_user_id }}/.bashrc
+            line: "source /opt/ros/{{ ros_distro }}/setup.bash"
+            create: yes
 
-    # 🔨 Build driver (idempotent)
-    - name: Build driver
-      command: make
-      args:
-        chdir: /usr/src/rtl8852au
-        creates: /usr/src/rtl8852au/8852au.ko
+        - name: Ensure user bashrc ownership
+          file:
+            path: /home/{{ ansible_user_id }}/.bashrc
+            owner: "{{ ansible_user_id }}"
+            group: "{{ ansible_user_id }}"
+          failed_when: false
 
-    - name: Install driver
-      command: make install
-      args:
-        chdir: /usr/src/rtl8852au
+    # -----------------------------------------------------------------------------
+    # 08. HARDWARE DRIVER
+    # -----------------------------------------------------------------------------
+    - name: 08 | Hardware driver
+      block:
+        - name: Clone rtl8852au repo
+          git:
+            repo: https://github.com/lwfinger/rtl8852au.git
+            dest: /usr/src/rtl8852au
 
-    # 📡 Copy udev rule 99-camera.rules
-  # -----------------------------------------------------------------------------
-  # 09. UDEV RULES
-  # -----------------------------------------------------------------------------
-    - name: Copy udev rule 99-camera.rules
-      copy:
-        dest: /etc/udev/rules.d/99-camera.rules
-        content: 'SUBSYSTEM=="usb", ATTR{idVendor}=="2a0b", ATTR{idProduct}=="00b8", MODE="0666"'
-        owner: root
-        group: root
-        mode: "0644"
+        - name: Build driver (idempotent)
+          command: make
+          args:
+            chdir: /usr/src/rtl8852au
+            creates: /usr/src/rtl8852au/8852au.ko
 
-    # 📡 Copy udev rule 99-imu.rules
-    - name: Copy udev rule 99-imu.rules
-      copy:
-        dest: /etc/udev/rules.d/99-imu.rules
-        content: |
-          SUBSYSTEM=="tty", ATTRS{idVendor}=="0403", ATTRS{serial}=="A5069RR4", MODE="0666", SYMLINK+="omoda-imu"
-          SUBSYSTEM=="tty", ATTRS{idVendor}=="0403", ATTRS{serial}=="A50285BI", MODE="0666", SYMLINK+="omoda-imu-bno"
-        owner: root
-        group: root
-        mode: "0644"
+        - name: Install driver
+          command: make install
+          args:
+            chdir: /usr/src/rtl8852au
 
-    # 📡 Copy udev rule 99-omoda.rules
-    - name: Copy udev rule 99-omoda.rules
-      copy:
-        dest: /etc/udev/rules.d/99-omoda.rules
-        content: |
-          SUBSYSTEM=="net", ACTION=="add", ATTRS{idVendor}=="1d50", ATTRS{idProduct}=="606f", ATTRS{serial}=="208733A431335010", NAME="can0"
-          SUBSYSTEM=="net", ACTION=="add", ATTRS{idVendor}=="1d50", ATTRS{idProduct}=="606f", ATTRS{serial}=="2074306F5330500C", NAME="can1"
-        owner: root
-        group: root
-        mode: "0644"
+    # -----------------------------------------------------------------------------
+    # 08B. CAMERA DRIVER (libuvc)
+    # -----------------------------------------------------------------------------
+    - name: 08B | Camera driver (libuvc)
+      block:
+        - name: Check if libuvc is installed
+          command: pkg-config --modversion libuvc
+          register: libuvc_check
+          changed_when: false
+          failed_when: false
 
-    # 📡 Copy udev rule 99-ublox.rules
-    - name: Copy udev rule 99-ublox.rules
-      copy:
-        dest: /etc/udev/rules.d/99-ublox.rules
-        content: 'SUBSYSTEM=="tty", ATTR{idVendor}=="1546", ATTR{idProduct}=="01a9", MODE="0666", SYMLINK+="omoda-gps"'
-        owner: root
-        group: root
-        mode: "0644"
+        - name: Clone libuvc repo
+          git:
+            repo: https://github.com/libuvc/libuvc.git
+            dest: "/home/{{ ansible_user_id }}/tools/libuvc"
+          when: libuvc_check.rc != 0
 
-    # 🔄 Reload udev rules
-    - name: Reload udev rules
-      command: udevadm control --reload-rules
+        - name: Create libuvc build directory
+          file:
+            path: "/home/{{ ansible_user_id }}/tools/libuvc/build"
+            state: directory
+            owner: "{{ ansible_user_id }}"
+            group: "{{ ansible_user_id }}"
+          when: libuvc_check.rc != 0
 
-    # 🔄 Trigger udev
-    - name: Trigger udev
-      command: udevadm trigger
+        - name: Configure libuvc with cmake
+          command: cmake ..
+          args:
+            chdir: "/home/{{ ansible_user_id }}/tools/libuvc/build"
+          when: libuvc_check.rc != 0
 
-    # 🚀 NoMachine (very low priority: move to last)
-  # -----------------------------------------------------------------------------
-  # 10. DESKTOP / GPU / CONTAINER
-  # -----------------------------------------------------------------------------
-    - name: Check installed NoMachine version
-      shell: |
-        dpkg-query -W -f='${Version}' nomachine 2>/dev/null || echo "not_installed"
-      register: nomachine_version
-      changed_when: false
+        - name: Build libuvc
+          command: make
+          args:
+            chdir: "/home/{{ ansible_user_id }}/tools/libuvc/build"
+          when: libuvc_check.rc != 0
 
-    - name: Set target NoMachine version
-      set_fact:
-        nomachine_target_version: "9.4.14"
+        - name: Install libuvc
+          command: make install
+          args:
+            chdir: "/home/{{ ansible_user_id }}/tools/libuvc/build"
+          when: libuvc_check.rc != 0
 
-    - name: Notify NoMachine version mismatch
-      debug:
-        msg: "Installed NoMachine version differs ({{ nomachine_version.stdout }}) from target ({{ nomachine_target_version }})"
-      when:
-        - nomachine_version.stdout != "not_installed"
-        - nomachine_target_version not in nomachine_version.stdout
+        - name: Ensure libuvc repo ownership
+          file:
+            path: "/home/{{ ansible_user_id }}/tools/libuvc"
+            state: directory
+            owner: "{{ ansible_user_id }}"
+            group: "{{ ansible_user_id }}"
+            recurse: yes
+          failed_when: false
 
-    - name: Download NoMachine deb only if missing or version mismatch
-      get_url:
-        url: https://web9001.nomachine.com/download/9.4/Linux/nomachine_9.4.14_1_amd64.deb
-        dest: /tmp/nomachine_9.4.14_1_amd64.deb
-        mode: "0644"
-      when:
-        - nomachine_version.stdout == "not_installed" or nomachine_target_version not in nomachine_version.stdout
+    # -----------------------------------------------------------------------------
+    # 09. UDEV RULES
+    # -----------------------------------------------------------------------------
+    - name: 09 | Udev rules
+      block:
+        - name: Copy udev rule 99-camera.rules
+          copy:
+            dest: /etc/udev/rules.d/99-camera.rules
+            content: 'SUBSYSTEM=="usb", ATTR{idVendor}=="2a0b", ATTR{idProduct}=="00b8", MODE="0666"'
+            owner: root
+            group: root
+            mode: "0644"
 
-    - name: Install NoMachine deb
-      apt:
-        deb: /tmp/nomachine_9.4.14_1_amd64.deb
-      when:
-        - nomachine_version.stdout == "not_installed" or nomachine_target_version not in nomachine_version.stdout
+        - name: Copy udev rule 99-imu.rules
+          copy:
+            dest: /etc/udev/rules.d/99-imu.rules
+            content: |
+              SUBSYSTEM=="tty", ATTRS{idVendor}=="0403", ATTRS{serial}=="A5069RR4", MODE="0666", SYMLINK+="omoda-imu"
+              SUBSYSTEM=="tty", ATTRS{idVendor}=="0403", ATTRS{serial}=="A50285BI", MODE="0666", SYMLINK+="omoda-imu-bno"
+            owner: root
+            group: root
+            mode: "0644"
+
+        - name: Copy udev rule 99-omoda.rules
+          copy:
+            dest: /etc/udev/rules.d/99-omoda.rules
+            content: |
+              SUBSYSTEM=="net", ACTION=="add", ATTRS{idVendor}=="1d50", ATTRS{idProduct}=="606f", ATTRS{serial}=="208733A431335010", NAME="can0"
+              SUBSYSTEM=="net", ACTION=="add", ATTRS{idVendor}=="1d50", ATTRS{idProduct}=="606f", ATTRS{serial}=="2074306F5330500C", NAME="can1"
+            owner: root
+            group: root
+            mode: "0644"
+
+        - name: Copy udev rule 99-ublox.rules
+          copy:
+            dest: /etc/udev/rules.d/99-ublox.rules
+            content: 'SUBSYSTEM=="tty", ATTR{idVendor}=="1546", ATTR{idProduct}=="01a9", MODE="0666", SYMLINK+="omoda-gps"'
+            owner: root
+            group: root
+            mode: "0644"
+
+        - name: Reload udev rules
+          command: udevadm control --reload-rules
+
+        - name: Trigger udev
+          command: udevadm trigger
+
+    # -----------------------------------------------------------------------------
+    # 10. DESKTOP / GPU / CONTAINER
+    # -----------------------------------------------------------------------------
+    - name: 10 | Desktop / GPU / container
+      block:
+        - name: Check installed NoMachine version
+          shell: |
+            dpkg-query -W -f='${Version}' nomachine 2>/dev/null || echo "not_installed"
+          register: nomachine_version
+          changed_when: false
+
+        - name: Set target NoMachine version
+          set_fact:
+            nomachine_target_version: "9.4.14"
+
+        - name: Notify NoMachine version mismatch
+          debug:
+            msg: "Installed NoMachine version differs ({{ nomachine_version.stdout }}) from target ({{ nomachine_target_version }})"
+          when:
+            - nomachine_version.stdout != "not_installed"
+            - nomachine_target_version not in nomachine_version.stdout
+
+        - name: Download NoMachine deb only if missing or version mismatch
+          get_url:
+            url: https://web9001.nomachine.com/download/9.4/Linux/nomachine_9.4.14_1_amd64.deb
+            dest: /tmp/nomachine_9.4.14_1_amd64.deb
+            mode: "0644"
+          when:
+            - nomachine_version.stdout == "not_installed" or nomachine_target_version not in nomachine_version.stdout
+
+        - name: Install NoMachine deb
+          apt:
+            deb: /tmp/nomachine_9.4.14_1_amd64.deb
+          when:
+            - nomachine_version.stdout == "not_installed" or nomachine_target_version not in nomachine_version.stdout
     
-    - name: Install NVIDIA driver and Mesa utils
-      apt:
-        name:
-          - nvidia-driver-535
-          - mesa-utils
-        state: present
-        update_cache: yes
+        - name: Install NVIDIA driver and Mesa utils
+          apt:
+            name:
+              - nvidia-driver-535
+              - mesa-utils
+            state: present
+            update_cache: yes
 
-    - name: Install Docker and prerequisites
-      apt:
-        name:
-          - docker.io
-          - ca-certificates
-          - curl
-          - gnupg2
-        state: present
-        update_cache: yes
+        - name: Install Docker and prerequisites
+          apt:
+            name:
+              - docker.io
+              - ca-certificates
+              - curl
+              - gnupg2
+              - docker-compose
+              - docker-compose-v2
+            state: present
+            update_cache: yes
 
-    - name: Add NVIDIA container toolkit GPG key
-      shell: |
-        curl -fsSL https://nvidia.github.io/libnvidia-container/gpgkey | \
-        gpg --dearmor -o /usr/share/keyrings/nvidia-container-toolkit-keyring.gpg
-      args:
-        creates: /usr/share/keyrings/nvidia-container-toolkit-keyring.gpg
+        - name: Add NVIDIA container toolkit GPG key
+          shell: |
+            curl -fsSL https://nvidia.github.io/libnvidia-container/gpgkey | \
+            gpg --dearmor -o /usr/share/keyrings/nvidia-container-toolkit-keyring.gpg
+          args:
+            creates: /usr/share/keyrings/nvidia-container-toolkit-keyring.gpg
 
-    - name: Add NVIDIA container toolkit repo
-      shell: |
-        curl -s -L https://nvidia.github.io/libnvidia-container/stable/deb/nvidia-container-toolkit.list | \
-        sed 's#deb https://#deb [signed-by=/usr/share/keyrings/nvidia-container-toolkit-keyring.gpg] https://#g' | \
-        tee /etc/apt/sources.list.d/nvidia-container-toolkit.list
-      args:
-        creates: /etc/apt/sources.list.d/nvidia-container-toolkit.list
+        - name: Add NVIDIA container toolkit repo
+          shell: |
+            curl -s -L https://nvidia.github.io/libnvidia-container/stable/deb/nvidia-container-toolkit.list | \
+            sed 's#deb https://#deb [signed-by=/usr/share/keyrings/nvidia-container-toolkit-keyring.gpg] https://#g' | \
+            tee /etc/apt/sources.list.d/nvidia-container-toolkit.list
+          args:
+            creates: /etc/apt/sources.list.d/nvidia-container-toolkit.list
 
-    - name: Ensure NVIDIA repo lines are uncommented
-      replace:
-        path: /etc/apt/sources.list.d/nvidia-container-toolkit.list
-        regexp: '^#(deb\s+.*)$'
-        replace: '\1'
+        - name: Ensure NVIDIA repo lines are uncommented
+          replace:
+            path: /etc/apt/sources.list.d/nvidia-container-toolkit.list
+            regexp: '^#(deb\s+.*)$'
+            replace: '\1'
 
-    - name: Enable experimental repo line
-      command: sed -i -e '/experimental/ s/^#//g' /etc/apt/sources.list.d/nvidia-container-toolkit.list
+        - name: Enable experimental repo line
+          command: sed -i -e '/experimental/ s/^#//g' /etc/apt/sources.list.d/nvidia-container-toolkit.list
 
-    - name: Update apt cache after adding NVIDIA repo
-      apt:
-        update_cache: yes
+        - name: Update apt cache after adding NVIDIA repo
+          apt:
+            update_cache: yes
 
-    - name: Install NVIDIA container toolkit packages
-      apt:
-        name:
-          - nvidia-container-toolkit=1.19.0-1
-          - nvidia-container-toolkit-base=1.19.0-1
-          - libnvidia-container-tools=1.19.0-1
-          - libnvidia-container1=1.19.0-1
-        state: present
+        - name: Install NVIDIA container toolkit packages
+          apt:
+            name:
+              - nvidia-container-toolkit=1.19.0-1
+              - nvidia-container-toolkit-base=1.19.0-1
+              - libnvidia-container-tools=1.19.0-1
+              - libnvidia-container1=1.19.0-1
+            state: present
 
-    - name: Configure NVIDIA container runtime for Docker
-      command: nvidia-ctk runtime configure --runtime=docker
+        - name: Configure NVIDIA container runtime for Docker
+          command: nvidia-ctk runtime configure --runtime=docker
 
-    - name: Restart Docker
-      service:
-        name: docker
-        state: restarted
+        - name: Restart Docker
+          service:
+            name: docker
+            state: restarted
 
-    - name: Install NVIDIA persistence systemd unit
-      copy:
-        dest: /etc/systemd/system/nvidia-persistence.service
-        content: |
-          [Unit]
-          Description=Enable NVIDIA Persistence Mode
-          After=multi-user.target
+        - name: Ensure docker group exists
+          group:
+            name: docker
+            state: present
 
-          [Service]
-          Type=oneshot
-          ExecStart=/usr/bin/nvidia-smi -pm 1
-          RemainAfterExit=true
+        - name: Add user to docker group
+          user:
+            name: "{{ ansible_user_id }}"
+            groups: docker
+            append: yes
 
-          [Install]
-          WantedBy=multi-user.target
-        owner: root
-        group: root
-        mode: "0644"
+        - name: Install NVIDIA persistence systemd unit
+          copy:
+            dest: /etc/systemd/system/nvidia-persistence.service
+            content: |
+              [Unit]
+              Description=Enable NVIDIA Persistence Mode
+              After=multi-user.target
 
-    - name: Enable NVIDIA persistence service
-      systemd:
-        name: nvidia-persistence.service
-        enabled: yes
-        daemon_reload: yes
+              [Service]
+              Type=oneshot
+              ExecStart=/usr/bin/nvidia-smi -pm 1
+              RemainAfterExit=true
 
-    - name: Add NVIDIA exports to bashrc
-      lineinfile:
-        path: /etc/bash.bashrc
-        line: "{{ item }}"
-        create: yes
-      loop:
-        - export __GLX_VENDOR_LIBRARY_NAME=nvidia
-        - export LIBGL_ALWAYS_INDIRECT=0
+              [Install]
+              WantedBy=multi-user.target
+            owner: root
+            group: root
+            mode: "0644"
 
-    - name: Install Qt5 dev packages
-      apt:
-        name:
-          - qtbase5-dev
-          - libqt5charts5-dev
-          - libqt5serialbus5-dev
-        state: present
-        update_cache: yes
+        - name: Enable NVIDIA persistence service
+          systemd:
+            name: nvidia-persistence.service
+            enabled: yes
+            daemon_reload: yes
 
-  # -----------------------------------------------------------------------------
-  # 11. DDS / NETWORK TUNING
-  # -----------------------------------------------------------------------------
-    - name: Install Cyclone DDS RMW packages
-      apt:
-        name:
-          - "ros-{{ ros_distro }}-rmw-cyclonedds-cpp"
-        state: present
-        update_cache: yes
+        - name: Add NVIDIA exports to bashrc
+          lineinfile:
+            path: /etc/bash.bashrc
+            line: "{{ item }}"
+            create: yes
+          loop:
+            - export __GLX_VENDOR_LIBRARY_NAME=nvidia
+            - export LIBGL_ALWAYS_INDIRECT=0
 
-    - name: Install multicast loopback systemd unit
-      copy:
-        dest: /etc/systemd/system/multicast-lo.service
-        content: |
-          [Unit]
-          Description=Enable Multicast on Loopback
+        - name: Install Qt5 dev packages
+          apt:
+            name:
+              - qtbase5-dev
+              - libqt5charts5-dev
+              - libqt5serialbus5-dev
+            state: present
+            update_cache: yes
 
-          [Service]
-          Type=oneshot
-          ExecStart=/usr/sbin/ip link set lo multicast on
+    # -----------------------------------------------------------------------------
+    # 11. DDS / NETWORK TUNING
+    # -----------------------------------------------------------------------------
+    - name: 11 | DDS / network tuning
+      block:
+        - name: Install Cyclone DDS RMW packages
+          apt:
+            name:
+              - "ros-{{ ros_distro }}-rmw-cyclonedds-cpp"
+            state: present
+            update_cache: yes
 
-          [Install]
-          WantedBy=multi-user.target
-        owner: root
-        group: root
-        mode: "0644"
+        - name: Install multicast loopback systemd unit
+          copy:
+            dest: /etc/systemd/system/multicast-lo.service
+            content: |
+              [Unit]
+              Description=Enable Multicast on Loopback
 
-    - name: Enable and start multicast loopback service
-      systemd:
-        name: multicast-lo.service
-        enabled: yes
-        state: started
-        daemon_reload: yes
+              [Service]
+              Type=oneshot
+              ExecStart=/usr/sbin/ip link set lo multicast on
 
-    - name: Install Cyclone DDS sysctl tuning
-      copy:
-        dest: /etc/sysctl.d/10-cyclone-max.conf
-        content: |
-          # Cyclone DDS / Autoware tuning
-          net.core.rmem_max=2147483647
-          net.ipv4.ipfrag_time=3
-          net.ipv4.ipfrag_high_thresh=134217728
-        owner: root
-        group: root
-        mode: "0644"
+              [Install]
+              WantedBy=multi-user.target
+            owner: root
+            group: root
+            mode: "0644"
 
-    - name: Apply sysctl settings
-      command: sysctl --system
+        - name: Enable and start multicast loopback service
+          systemd:
+            name: multicast-lo.service
+            enabled: yes
+            state: started
+            daemon_reload: yes
 
-    - name: Write Cyclone DDS XML config
-      copy:
-        dest: "/home/{{ ansible_user_id }}/cyclonedds.xml"
-        content: |
-          <?xml version="1.0" encoding="UTF-8" ?>
-          <CycloneDDS xmlns="https://cdds.io/config">
-          <Domain Id="any">
-          <General>
-          <Interfaces>
-          <NetworkInterface autodetermine="false" name="lo" />
-          </Interfaces>
-          <AllowMulticast>default</AllowMulticast>
-          <MaxMessageSize>65500B</MaxMessageSize>
-          </General>
-          <Internal>
-          <SocketReceiveBufferSize min="10MB"/>
-          <Watermarks>
-          <WhcHigh>500kB</WhcHigh>
-          </Watermarks>
-          </Internal>
-          </Domain>
-          </CycloneDDS>
-        owner: "{{ ansible_user_id }}"
-        group: "{{ ansible_user_id }}"
-        mode: "0644"
+        - name: Install Cyclone DDS sysctl tuning
+          copy:
+            dest: /etc/sysctl.d/10-cyclone-max.conf
+            content: |
+              # Cyclone DDS / Autoware tuning
+              net.core.rmem_max=2147483647
+              net.ipv4.ipfrag_time=3
+              net.ipv4.ipfrag_high_thresh=134217728
+            owner: root
+            group: root
+            mode: "0644"
 
-    - name: Add Cyclone DDS env vars to bashrc
-      lineinfile:
-        path: "/home/{{ ansible_user_id }}/.bashrc"
-        line: "{{ item }}"
-        create: yes
-      loop:
-        - export RMW_IMPLEMENTATION=rmw_cyclonedds_cpp
-        - export CYCLONEDDS_URI=file:///home/{{ ansible_user_id }}/cyclonedds.xml
+        - name: Apply sysctl settings
+          command: sysctl --system
 
-    - name: Add /usr/local/bin to PATH in bashrc
-      lineinfile:
-        path: /etc/bash.bashrc
-        line: export PATH=$PATH:/usr/local/bin
-        create: yes
+        - name: Write Cyclone DDS XML config
+          copy:
+            dest: "/home/{{ ansible_user_id }}/cyclonedds.xml"
+            content: |
+              <?xml version="1.0" encoding="UTF-8" ?>
+              <CycloneDDS xmlns="https://cdds.io/config">
+              <Domain Id="any">
+              <General>
+              <Interfaces>
+              <NetworkInterface autodetermine="false" name="lo" />
+              </Interfaces>
+              <AllowMulticast>default</AllowMulticast>
+              <MaxMessageSize>65500B</MaxMessageSize>
+              </General>
+              <Internal>
+              <SocketReceiveBufferSize min="10MB"/>
+              <Watermarks>
+              <WhcHigh>500kB</WhcHigh>
+              </Watermarks>
+              </Internal>
+              </Domain>
+              </CycloneDDS>
+            owner: "{{ ansible_user_id }}"
+            group: "{{ ansible_user_id }}"
+            mode: "0644"
 
-  # -----------------------------------------------------------------------------
-  # 12. TOOLS / SSH / MAINTENANCE
-  # -----------------------------------------------------------------------------
-    - name: Create tools directory
-      file:
-        path: "/home/{{ ansible_user_id }}/tools"
-        state: directory
-        owner: "{{ ansible_user_id }}"
-        group: "{{ ansible_user_id }}"
-        mode: "0755"
+        - name: Add Cyclone DDS env vars to bashrc
+          lineinfile:
+            path: "/home/{{ ansible_user_id }}/.bashrc"
+            line: "{{ item }}"
+            create: yes
+          loop:
+            - export RMW_IMPLEMENTATION=rmw_cyclonedds_cpp
+            - export CYCLONEDDS_URI=file:///home/{{ ansible_user_id }}/cyclonedds.xml
 
-    - name: Clone cabana repo
-      git:
-        repo: https://github.com/MuHafidzh/cabana.git
-        dest: "/home/{{ ansible_user_id }}/tools/cabana"
+        - name: Add /usr/local/bin to PATH in bashrc
+          lineinfile:
+            path: /etc/bash.bashrc
+            line: export PATH=$PATH:/usr/local/bin
+            create: yes
 
-    - name: Add cabana alias to bashrc
-      lineinfile:
-        path: /etc/bash.bashrc
-        line: "alias cabana='~/tools/cabana/cabana --socketcan can0 --socketcan-fd --socketcan-brs --dbc ~/tools/cabana/opendbc/chery_canfd_dbc/chery_canfd.dbc'"
-        create: yes
+    # -----------------------------------------------------------------------------
+    # 12. TOOLS / SSH / MAINTENANCE
+    # -----------------------------------------------------------------------------
+    - name: 12 | Tools / SSH / maintenance
+      block:
+        - name: Create tools directory
+          file:
+            path: "/home/{{ ansible_user_id }}/tools"
+            state: directory
+            owner: "{{ ansible_user_id }}"
+            group: "{{ ansible_user_id }}"
+            mode: "0755"
 
-    - name: Install SSH server and tools
-      apt:
-        name:
-          - openssh-server
-          - htop
-          - btop
-          - tcpdump
-          - wireshark
-          - net-tools
-        state: present
-        update_cache: yes
+        - name: Clone cabana repo
+          git:
+            repo: https://github.com/MuHafidzh/cabana.git
+            dest: "/home/{{ ansible_user_id }}/tools/cabana"
 
-    - name: Enable and start SSH
-      systemd:
-        name: ssh
-        enabled: yes
-        state: started
+        - name: Ensure cabana repo ownership
+          file:
+            path: "/home/{{ ansible_user_id }}/tools/cabana"
+            state: directory
+            owner: "{{ ansible_user_id }}"
+            group: "{{ ansible_user_id }}"
+            recurse: yes
+          failed_when: false
 
-    - name: Disable UFW firewall
-      systemd:
-        name: ufw
-        enabled: no
-        state: stopped
-      ignore_errors: yes
+        - name: Add cabana alias to bashrc
+          lineinfile:
+            path: /etc/bash.bashrc
+            line: "alias cabana='~/tools/cabana/cabana --socketcan can0 --socketcan-fd --socketcan-brs --dbc ~/tools/cabana/opendbc/chery_canfd_dbc/chery_canfd.dbc'"
+            create: yes
 
-    - name: Add fastfetch PPA
-      apt_repository:
-        repo: ppa:zhangsongcui3371/fastfetch
-        state: present
+        - name: Install SSH server and tools
+          apt:
+            name:
+              - openssh-server
+              - htop
+              - btop
+              - tcpdump
+              - wireshark
+              - net-tools
+            state: present
+            update_cache: yes
 
-    - name: Update apt cache after fastfetch PPA
-      apt:
-        update_cache: yes
+        - name: Enable and start SSH
+          systemd:
+            name: ssh
+            enabled: yes
+            state: started
 
-    - name: Install fastfetch
-      apt:
-        name: fastfetch
-        state: present
+        - name: Disable UFW firewall
+          systemd:
+            name: ufw
+            enabled: no
+            state: stopped
+          ignore_errors: yes
 
-    - name: Add alias kulkun to bashrc
-      lineinfile:
-        path: /etc/bash.bashrc
-        line: "alias kulkun='colcon build --symlink-install --packages-select'"
-        create: yes
+        # - name: Add fastfetch PPA
+        #   apt_repository:
+        #     repo: ppa:zhangsongcui3371/fastfetch
+        #     state: present
 
-    - name: Add alias relay to bashrc
-      lineinfile:
-        path: /etc/bash.bashrc
-        line: "alias relay='/home/{{ ansible_user_id }}/scripts/relay_can.sh'"
-        create: yes
+        # - name: Update apt cache after fastfetch PPA
+        #   apt:
+        #     update_cache: yes
 
-    - name: Create scripts directory
-      file:
-        path: "/home/{{ ansible_user_id }}/scripts"
-        state: directory
-        owner: "{{ ansible_user_id }}"
-        group: "{{ ansible_user_id }}"
-        mode: "0755"
+        # - name: Install fastfetch
+        #   apt:
+        #     name: fastfetch
+        #     state: present
 
-    - name: Install relay_can.sh
-      copy:
-        dest: "/home/{{ ansible_user_id }}/scripts/relay_can.sh"
-        content: |
-          #!/bin/sh
+        - name: Add alias kulkun to bashrc
+          lineinfile:
+            path: /etc/bash.bashrc
+            line: "alias kulkun='colcon build --symlink-install --packages-select'"
+            create: yes
 
-          STATE="$1"
-          CAN_IF="$2"
+        - name: Add alias relay to bashrc
+          lineinfile:
+            path: /etc/bash.bashrc
+            line: "alias relay='/home/{{ ansible_user_id }}/scripts/relay_can.sh'"
+            create: yes
 
-          if [ -z "$STATE" ] || [ -z "$CAN_IF" ]; then
-            echo "Usage: $0 <on|off> <can_interface>"
-            exit 1
-          fi
+        - name: Create scripts directory
+          file:
+            path: "/home/{{ ansible_user_id }}/scripts"
+            state: directory
+            owner: "{{ ansible_user_id }}"
+            group: "{{ ansible_user_id }}"
+            mode: "0755"
 
-          if [ "$STATE" = "on" ]; then
-            cansend "$CAN_IF" 069##2.01.00.64.02.1F
-          elif [ "$STATE" = "off" ]; then
-            cansend "$CAN_IF" 069##2.00.00.64.02.82
-          else
-            echo "Invalid state: $STATE (use 'on' or 'off')"
-            exit 1
-          fi
-        owner: "{{ ansible_user_id }}"
-        group: "{{ ansible_user_id }}"
-        mode: "0755"
+        - name: Install relay_can.sh
+          copy:
+            dest: "/home/{{ ansible_user_id }}/scripts/relay_can.sh"
+            content: |
+              #!/bin/sh
 
-    - name: Install can-check systemd unit
-      copy:
-        dest: /etc/systemd/system/can-check.service
-        content: |
-          [Unit]
-          Description=Bring up CAN interfaces (can0, can1)
-          After=network.target
-          Wants=network.target
+              STATE="$1"
+              CAN_IF="$2"
 
-          [Service]
-          Type=oneshot
-          RemainAfterExit=yes
+              if [ -z "$STATE" ] || [ -z "$CAN_IF" ]; then
+                echo "Usage: $0 <on|off> <can_interface>"
+                exit 1
+              fi
 
-          ExecStartPre=/bin/sleep 2
+              if [ "$STATE" = "on" ]; then
+                cansend "$CAN_IF" 069##2.01.00.64.02.1F
+              elif [ "$STATE" = "off" ]; then
+                cansend "$CAN_IF" 069##2.00.00.64.02.82
+              else
+                echo "Invalid state: $STATE (use 'on' or 'off')"
+                exit 1
+              fi
+            owner: "{{ ansible_user_id }}"
+            group: "{{ ansible_user_id }}"
+            mode: "0755"
 
-          ExecStart=/bin/bash -c '\
-          for iface in can0 can1; do \
-              echo "Checking $iface..."; \
-              for i in $(seq 1 10); do \
+        - name: Install kill_all.sh
+          copy:
+            dest: "/home/{{ ansible_user_id }}/scripts/kill_all.sh"
+            content: |
+              #!/bin/bash
+
+              kill -9 $(ps ax | grep 'ros' | awk '{print $1}') 2> /dev/null
+            owner: "{{ ansible_user_id }}"
+            group: "{{ ansible_user_id }}"
+            mode: "0755"
+
+        - name: Add alias kill_all to bashrc
+          lineinfile:
+            path: /etc/bash.bashrc
+            line: "alias kill_all='/home/{{ ansible_user_id }}/scripts/kill_all.sh'"
+            create: yes
+
+        - name: Install can-check systemd unit
+          copy:
+            dest: /etc/systemd/system/can-check.service
+            content: |
+              [Unit]
+              Description=Bring up CAN interfaces (can0, can1)
+              After=network.target
+              Wants=network.target
+
+              [Service]
+              Type=oneshot
+              RemainAfterExit=yes
+
+              ExecStartPre=/bin/sleep 2
+
+              ExecStart=/bin/bash -c '\
+              for iface in can0 can1; do \
+                  echo "Checking $iface..."; \
+                  for i in $(seq 1 10); do \
+                      if ip link show $iface > /dev/null 2>&1; then \
+                          echo "$iface found"; \
+                          break; \
+                      fi; \
+                      echo "$iface not ready, waiting..."; \
+                      sleep 1; \
+                  done; \
                   if ip link show $iface > /dev/null 2>&1; then \
-                      echo "$iface found"; \
-                      break; \
-                  fi; \
-                  echo "$iface not ready, waiting..."; \
-                  sleep 1; \
-              done; \
-              if ip link show $iface > /dev/null 2>&1; then \
-                  if ip link show $iface | grep -q "state UP"; then \
-                      echo "$iface already UP"; \
+                      if ip link show $iface | grep -q "state UP"; then \
+                          echo "$iface already UP"; \
+                      else \
+                          echo "Configuring $iface"; \
+                          ip link set $iface down 2>/dev/null || true; \
+                          ip link set $iface txqueuelen 1000; \
+                          ip link set $iface up type can bitrate 500000 dbitrate 2000000 fd on; \
+                      fi; \
                   else \
-                      echo "Configuring $iface"; \
-                      ip link set $iface down 2>/dev/null || true; \
-                      ip link set $iface txqueuelen 1000; \
-                      ip link set $iface up type can bitrate 500000 dbitrate 2000000 fd on; \
+                      echo "$iface not found, skipping"; \
                   fi; \
-              else \
-                  echo "$iface not found, skipping"; \
-              fi; \
-          done'
-          StandardOutput=journal
-          StandardError=journal
+              done'
+              StandardOutput=journal
+              StandardError=journal
 
-          [Install]
-          WantedBy=multi-user.target
-        owner: root
-        group: root
-        mode: "0644"
+              [Install]
+              WantedBy=multi-user.target
+            owner: root
+            group: root
+            mode: "0644"
 
-    - name: Enable can-check service
-      systemd:
-        name: can-check.service
-        enabled: yes
-        daemon_reload: yes
+        - name: Enable can-check service
+          systemd:
+            name: can-check.service
+            enabled: yes
+            daemon_reload: yes
 
-    # 📊 KDiskMark
-    - name: Check if KDiskMark is installed
-      command: dpkg-query -W -f='${Status}' kdiskmark
-      register: kdiskmark_status
-      changed_when: false
-      failed_when: false
+        # - name: Check if KDiskMark is installed
+        #   command: dpkg-query -W -f='${Status}' kdiskmark
+        #   register: kdiskmark_status
+        #   changed_when: false
+        #   failed_when: false
 
-    - name: Add KDiskMark PPA
-      apt_repository:
-        repo: ppa:jonmagon/kdiskmark
-        state: present
-      when: "'install ok installed' not in kdiskmark_status.stdout"
+        # - name: Add KDiskMark PPA
+        #   apt_repository:
+        #     repo: ppa:jonmagon/kdiskmark
+        #     state: present
+        #   when: "'install ok installed' not in kdiskmark_status.stdout"
 
-    - name: Update apt cache after KDiskMark PPA
-      apt:
-        update_cache: yes
-      when: "'install ok installed' not in kdiskmark_status.stdout"
+        # - name: Update apt cache after KDiskMark PPA
+        #   apt:
+        #     update_cache: yes
+        #   when: "'install ok installed' not in kdiskmark_status.stdout"
 
-    - name: Install KDiskMark
-      apt:
-        name: kdiskmark
-        state: present
-      when: "'install ok installed' not in kdiskmark_status.stdout"
+        # - name: Install KDiskMark
+        #   apt:
+        #     name: kdiskmark
+        #     state: present
+        #   when: "'install ok installed' not in kdiskmark_status.stdout"
 
-    # 🔥 FurMark Linux (.7z)
-    - name: Ensure extraction tools are installed
-      apt:
-        name:
-          - p7zip-full
-        state: present
-        update_cache: yes
+        - name: Ensure extraction tools are installed
+          apt:
+            name:
+              - p7zip-full
+            state: present
+            update_cache: yes
 
-    - name: Check if FurMark archive exists
-      stat:
-        path: "/home/{{ ansible_user_id }}/tools/furmark_linux.7z"
-      register: furmark_archive
+        - name: Check if FurMark archive exists
+          stat:
+            path: "/home/{{ ansible_user_id }}/tools/furmark_linux.7z"
+          register: furmark_archive
 
-    - name: Download FurMark archive
-      get_url:
-        url: https://geeks3d.com/dl/get/834
-        dest: "/home/{{ ansible_user_id }}/tools/furmark_linux.7z"
-        mode: "0644"
-      when: not furmark_archive.stat.exists
+        - name: Download FurMark archive
+          get_url:
+            url: https://geeks3d.com/dl/get/833
+            dest: "/home/{{ ansible_user_id }}/tools/furmark_linux.7z"
+            mode: "0644"
+            owner: "{{ ansible_user_id }}"
+            group: "{{ ansible_user_id }}"
+          when: not furmark_archive.stat.exists
 
-    - name: Check if FurMark extracted directory exists
-      stat:
-        path: "/home/{{ ansible_user_id }}/tools/furmark"
-      register: furmark_extract_dir
+        - name: Check if FurMark extracted directory exists
+          stat:
+            path: "/home/{{ ansible_user_id }}/tools/furmark"
+          register: furmark_extract_dir
 
-    - name: Extract FurMark archive
-      command: >
-        7z x /home/{{ ansible_user_id }}/tools/furmark_linux.7z
-        -o/home/{{ ansible_user_id }}/tools/furmark
-      when: not furmark_extract_dir.stat.exists
+        - name: Extract FurMark archive
+          command: >
+            7z x /home/{{ ansible_user_id }}/tools/furmark_linux.7z
+            -o/home/{{ ansible_user_id }}/tools/furmark
+          when: not furmark_extract_dir.stat.exists
+
+        - name: Ensure FurMark extracted directory ownership
+          file:
+            path: "/home/{{ ansible_user_id }}/tools/furmark"
+            state: directory
+            owner: "{{ ansible_user_id }}"
+            group: "{{ ansible_user_id }}"
+            recurse: yes
+          failed_when: false
